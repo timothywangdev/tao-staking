@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = Field("redis://localhost:6379/1", description="Redis URL for caching")
     REDIS_POOL_SIZE: int = Field(100, description="Redis connection pool size", gt=0)
+    REDIS_CACHE_TTL: int = Field(120, description="Redis cache TTL in seconds", gt=0)
 
     # Bittensor
     BITTENSOR_NETWORK: str = Field("test", description="Bittensor network (test or mainnet)")
