@@ -4,16 +4,14 @@ Main FastAPI application.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import settings
-from .core.limiter import limiter
 from .api.v1 import tao_dividends
+
+from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -21,6 +19,9 @@ app = FastAPI(
     description="Tao Dividends API Service",
     debug=True,  # Enable debug mode
 )
+
+# Add Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 # Add CORS middleware
 app.add_middleware(
@@ -30,11 +31,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Add rate limiting
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-# app.add_middleware(SlowAPIMiddleware)
 
 
 # Custom exception handlers
