@@ -18,8 +18,8 @@ A production-grade, asynchronous FastAPI service for querying Tao dividends from
 
 ### 1. Clone & Configure
 ```bash
-git clone <your-repo-url>
-cd <repo-root>
+git clone https://github.com/timothywangdev/tao-staking
+cd https://github.com/timothywangdev/tao-staking
 cp .env.example .env  # Edit with your secrets
 ```
 
@@ -115,7 +115,7 @@ mypy .
 
 ### Run Tests
 ```bash
-pytest
+PYTHONPATH=. pytest tests/ --maxfail=3 --disable-warnings
 ```
 - Includes unit and concurrency tests for API and background tasks
 
