@@ -1,39 +1,36 @@
 import redis.asyncio as redis
 from ..config import settings
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CacheClient:
     def __init__(self):
         self.redis = redis.from_url(settings.REDIS_URL)
-        self.default_ttl = 120  # 2 minutes
+        self.default_ttl = settings.REDIS_CACHE_TTL
 
-    async def get_dividend_cache_key(self, netuid: int, hotkey: str) -> str:
-        """Generate cache key for dividend data."""
-        return f"tao:dividend:{netuid}:{hotkey}"
+    def build_cache_key(self, *args, prefix: Optional[str] = None) -> str:
+        """Build a cache key from prefix and args."""
+        key_parts = [prefix] if prefix else []
+        key_parts += [str(arg) for arg in args]
+        return ":".join(key_parts)
 
-    async def get_cached_dividend(self, netuid: int, hotkey: str) -> Optional[Dict[str, Any]]:
-        """Get cached dividend data if it exists."""
+    async def get(self, key: str) -> Optional[Any]:
+        """Get cached data by key."""
         try:
-            key = await self.get_dividend_cache_key(netuid, hotkey)
             data = await self.redis.get(key)
             return json.loads(data) if data else None
-
         except Exception as e:
-            # Log error but don't fail the request
-            print(f"Cache get error: {str(e)}")
+            logger.error(f"Cache get error: {str(e)}")
             return None
 
-    async def set_cached_dividend(
-        self, netuid: int, hotkey: str, data: Dict[str, Any], ttl: Optional[int] = None
-    ) -> None:
-        """Cache dividend data with TTL."""
+    async def set(self, key: str, data: Any, ttl: Optional[int] = None) -> None:
+        """Set cached data by key with TTL."""
         try:
-            key = await self.get_dividend_cache_key(netuid, hotkey)
             await self.redis.setex(key, ttl or self.default_ttl, json.dumps(data))
-
         except Exception as e:
-            # Log error but don't fail the request
-            print(f"Cache set error: {str(e)}")
+            logger.error(f"Cache set error: {str(e)}")
             pass
