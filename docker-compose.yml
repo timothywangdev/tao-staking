@@ -11,14 +11,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+  db:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
   worker:
     build: .
-    command: celery -A app.tasks.sentiment_staking_task worker --loglevel=debug
+    command: celery -A app.tasks.sentiment_staking_task worker --loglevel=info
     environment:
       REDIS_URL: redis://cache:6379
+      MONGODB_URL: mongodb://db:27017
     depends_on:
       cache:
         condition: service_healthy
+      db:
+        condition: service_started
     develop:
       watch:
         - action: sync
@@ -31,11 +40,14 @@ services:
       - "8000:8000"
     environment:
       REDIS_URL: redis://cache:6379
+      MONGODB_URL: mongodb://db:27017
     depends_on:
       cache:
         condition: service_healthy
       worker:
         condition: service_started
+      db:
+        condition: service_healthy
     develop:
       watch:
         - action: sync
@@ -51,8 +63,29 @@ services:
     depends_on:
       cache:
         condition: service_healthy
+      worker:
+        condition: service_started
+      db:
+        condition: service_healthy
     develop:
       watch:
         - action: sync
           path: .
           target: /app
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
