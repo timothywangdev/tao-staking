@@ -9,6 +9,7 @@ from ...middleware.auth import get_api_key
 from ...config import settings
 from ...clients.bittensor import BitTensorClient
 from ...clients.cache import CacheClient
+from ...tasks.sentiment_staking_task import sentiment_staking_task
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["tao_dividends"])
 bittensor_client = BitTensorClient()
 cache_client = CacheClient()
+
+
+def _trigger_sentiment_staking_task(netuid: int, hotkey: str, logger: logging.Logger) -> None:
+    """Helper to trigger the sentiment staking task and log errors."""
+    try:
+        sentiment_staking_task.delay(netuid, hotkey)
+        logger.info(f"Sentiment staking task enqueued for netuid={netuid}, hotkey={hotkey}")
+    except Exception as e:
+        logger.error(f"Failed to enqueue sentiment-staking task: {str(e)}")
 
 
 @router.get(
@@ -52,53 +62,53 @@ async def get_tao_dividends(
         HTTPException: If there's an error querying the blockchain or cache
     """
     try:
-        # Use defaults if not provided
         netuid = netuid if netuid is not None else settings.DEFAULT_NETUID
         hotkey = hotkey if hotkey else settings.DEFAULT_HOTKEY
-
         logger.info(f"Processing dividend request for netuid={netuid}, hotkey={hotkey}")
 
-        # Try to get from cache first
+        dividend = None
+        cached = False
+        # Try cached dividend first
         try:
-            cached_data = await cache_client.get_cached_dividend(netuid, hotkey)
-            if cached_data:
-                logger.debug(f"Cache hit for netuid={netuid}, hotkey={hotkey}")
-                return DividendResponse(**cached_data, cached=True)
+            cache_key = cache_client.build_cache_key(netuid, hotkey, prefix="api:get_tao_dividends")
+            dividend = await cache_client.get(cache_key)
         except Exception as cache_error:
             logger.warning(f"Cache error: {str(cache_error)}")
-            # Continue with blockchain query if cache fails
+            dividend = None
 
-        # Query blockchain
+        if dividend is None:
+            # cache miss
+            logger.debug(f"Cache miss for netuid={netuid}, hotkey={hotkey}")
+            try:
+                dividend = await bittensor_client.get_dividend(netuid, hotkey)
+            except Exception as blockchain_error:
+                logger.error(f"Blockchain query error: {str(blockchain_error)}")
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Failed to query blockchain: {str(blockchain_error)}",
+                )
+        else:
+            cached = True
+
+        # cache the dividend response
         try:
-            dividend = await bittensor_client.get_dividend(netuid, hotkey)
-        except Exception as blockchain_error:
-            logger.error(f"Blockchain query error: {str(blockchain_error)}")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Failed to query blockchain: {str(blockchain_error)}",
-            )
+            await cache_client.set(cache_key, dividend)
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache result: {str(cache_error)}")
 
-        # Prepare response
-        response = DividendResponse(
+        # trigger sentiment staking task if trade is true
+        if trade:
+            _trigger_sentiment_staking_task(netuid, hotkey, logger)
+
+        return DividendResponse(
             netuid=netuid,
             hotkey=hotkey,
             dividend=dividend,
-            cached=False,
+            cached=cached,
             stake_tx_triggered=trade,
         )
-
-        # Cache the result
-        try:
-            await cache_client.set_cached_dividend(netuid, hotkey, response.dict())
-        except Exception as cache_error:
-            logger.warning(f"Failed to cache result: {str(cache_error)}")
-            # Continue since we have the data even if caching failed
-
-        logger.info(f"Successfully processed dividend request for netuid={netuid}, hotkey={hotkey}")
-        return response
-
     except HTTPException:
-        raise  # Re-raise HTTP exceptions as is
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in get_tao_dividends: {str(e)}", exc_info=True)
         raise HTTPException(
