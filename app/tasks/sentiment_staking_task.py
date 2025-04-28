@@ -8,6 +8,7 @@ import logging
 from app.clients.mongodb import MongoDBClient
 from app.models.sentiment_staking_result import SentimentStakingResult
 import datetime
+from typing import Optional, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,17 @@ def run_async(coro):
         return asyncio.run(coro)
 
 
-async def sentiment_staking(netuid: int, hotkey: str, task_id: str):
+async def sentiment_staking(
+    netuid: int,
+    hotkey: str,
+    task_id: str,
+    mongo_client: Optional[MongoDBClient] = None,
+    bittensor_client: Optional[BitTensorClient] = None,
+    wallet_client: Optional[WalletClient] = None,
+    desearch_client: Optional[DesearchClient] = None,
+    chutes_client: Optional[ChutesClient] = None,
+    stake_amount_fn: Optional[Callable[[float], float]] = None,
+):
     """
     This function performs sentiment-based staking on the Tao network.
     It analyzes the sentiment of the network and stakes or unstakes TAO accordingly.
@@ -35,7 +46,13 @@ async def sentiment_staking(netuid: int, hotkey: str, task_id: str):
     """
     stake_amount = None
     result = None
-    mongo_client = MongoDBClient()
+    mongo_client = mongo_client or MongoDBClient()
+    bittensor_client = bittensor_client or BitTensorClient()
+    wallet_client = wallet_client or WalletClient()
+    desearch_client = desearch_client or DesearchClient()
+    chutes_client = chutes_client or ChutesClient()
+    stake_amount_fn = stake_amount_fn or (lambda sentiment_score: 1)  # Default logic
+
     pending_doc = {
         "task_id": task_id,
         "status": "pending",
@@ -48,24 +65,17 @@ async def sentiment_staking(netuid: int, hotkey: str, task_id: str):
     }
     await mongo_client.insert_one("sentiment_staking_results", pending_doc)
     try:
-        bittensor_client = BitTensorClient()
-        wallet_client = WalletClient()
-
         # step 1: get the tweets
-        desearch_client = DesearchClient()
         tweets = desearch_client.search_tweets(f"Bittensor netuid {netuid}", count=10)
         logger.debug(f"Tweets: {tweets}")
 
         # step 2: get the sentiment score
-        chutes_client = ChutesClient()
         sentiment_score = chutes_client.get_sentiment_score(tweets)
         chutes_client.close()
-
         logger.debug(f"Sentiment score: {sentiment_score}")
 
         # step 3: stake or unstake TAO
-        # stake_amount = 0.01 * sentiment_score
-        stake_amount = 1
+        stake_amount = stake_amount_fn(sentiment_score)
         logger.debug(f"Stake amount: {stake_amount}")
         stake_unstake_success = False
         if stake_amount > 0:
