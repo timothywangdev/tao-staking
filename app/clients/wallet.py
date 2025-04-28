@@ -13,6 +13,9 @@ class WalletClient:
             self.wallet.regenerate_coldkey(
                 mnemonic=settings.BITTENSOR_WALLET_MNEMONIC, use_password=False, overwrite=True
             )
+            self.wallet.regenerate_hotkey(
+                mnemonic=settings.BITTENSOR_WALLET_MNEMONIC, use_password=False, overwrite=True
+            )
 
     async def get_balance(self):
         return await self.wallet.get_balance()
