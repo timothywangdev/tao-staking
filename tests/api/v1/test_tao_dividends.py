@@ -7,6 +7,7 @@ from app.main import app
 from app.models.dividend import DividendResponse, ErrorResponse
 import app.api.v1.tao_dividends as tao_dividends_module
 from httpx import ASGITransport, AsyncClient
+import asyncio
 
 # Constants for test
 TEST_NETUID = 42
@@ -176,3 +177,41 @@ async def test_get_tao_dividends_defaults(async_client):
         data = response.json()
         assert data["netuid"] == settings.DEFAULT_NETUID
         assert data["hotkey"] == settings.DEFAULT_HOTKEY
+
+
+@pytest.mark.anyio
+async def test_get_tao_dividends_concurrent(async_client):
+    """
+    Simulate many concurrent requests to the /api/v1/tao_dividends endpoint
+    to ensure the service can handle concurrent access.
+    """
+    with (
+        patch.object(tao_dividends_module, "cache_client") as mock_cache_client,
+        patch.object(tao_dividends_module, "bittensor_client") as mock_bt_client,
+    ):
+        mock_cache_client.build_cache_key.return_value = "cache:key"
+        mock_cache_client.get = AsyncMock(return_value=TEST_DIVIDEND)
+        mock_cache_client.set = AsyncMock()
+        mock_bt_client.get_dividend = AsyncMock()
+
+        # Define a single request coroutine
+        async def make_request():
+            response = await async_client.get(
+                f"/api/v1/tao_dividends?netuid={TEST_NETUID}&hotkey={TEST_HOTKEY}",
+                headers={"X-API-Key": SECRET_KEY},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["netuid"] == TEST_NETUID
+            assert data["hotkey"] == TEST_HOTKEY
+            assert data["dividend"] == TEST_DIVIDEND
+            assert data["cached"] is True
+            assert data["stake_tx_triggered"] is False
+            return data
+
+        # Simulate 20 concurrent requests
+        results = await asyncio.gather(*(make_request() for _ in range(20)))
+        assert len(results) == 20
+        # Optionally, check that all results are identical
+        for result in results:
+            assert result["dividend"] == TEST_DIVIDEND
