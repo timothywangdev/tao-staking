@@ -4,6 +4,7 @@ from ..config import settings
 from typing import Optional
 from bittensor import Wallet
 import logging
+from bittensor.utils.balance import tao
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,14 @@ class BitTensorClient:
         """
         Add stake for a given subnet and hotkey.
         """
+        logger.info(f"Staking {amount} TAO for netuid={netuid}, hotkey={hotkey}")
+        print(f"Staking {amount} TAO for netuid={netuid}, hotkey={hotkey}")
         try:
             # Submit stake transaction
-            stake_success = await self.subtensor.add_stake(
-                netuid=netuid, hotkey_ss58=hotkey, amount=amount, wallet=wallet
-            )
+            async with self.subtensor as async_subtensor:
+                stake_success = await async_subtensor.add_stake(
+                    netuid=netuid, hotkey_ss58=hotkey, amount=tao(amount, netuid), wallet=wallet
+                )
             return stake_success
         except Exception as e:
             raise Exception(f"Failed to add stake: {str(e)}")
@@ -69,11 +73,14 @@ class BitTensorClient:
         """
         Remove stake for a given subnet and hotkey.
         """
+        logger.info(f"Unstaking {amount} TAO for netuid={netuid}, hotkey={hotkey}")
+        print(f"Unstaking {amount} TAO for netuid={netuid}, hotkey={hotkey}")
         try:
             # Submit unstake transaction
-            unstake_success = await self.subtensor.unstake(
-                netuid=netuid, hotkey_ss58=hotkey, amount=amount, wallet=wallet
-            )
+            async with self.subtensor as async_subtensor:
+                unstake_success = await async_subtensor.unstake(
+                    netuid=netuid, hotkey_ss58=hotkey, amount=tao(amount, netuid), wallet=wallet
+                )
             return unstake_success
         except Exception as e:
             raise Exception(f"Failed to unstake: {str(e)}")
