@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     # Chutes API
     CHUTES_API_KEY: str = Field(..., description="API key for Chutes LLM service")
 
+    OTLP_GRPC_ENDPOINT: str = Field(
+        "http://tempo:4317",
+        description="OTLP gRPC endpoint for OpenTelemetry Collector (logs and traces)",
+    )
+
+    LOKI_URL: str = Field(
+        "http://loki:3100/loki/api/v1/push", description="Loki URL for log ingestion"
+    )
+
     @validator("BITTENSOR_NETWORK")
     def validate_network(cls, v: str) -> str:
         if v not in ["test", "main"]:
