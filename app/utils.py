@@ -1,5 +1,6 @@
 import time
 from typing import Tuple
+import sys
 
 from opentelemetry import trace
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram
@@ -124,20 +125,16 @@ def setting_otlp(app: ASGIApp, app_name: str, endpoint: str, log_correlation: bo
     FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer)
 
 
+def is_running_tests() -> bool:
+    """Check if code is running in a test environment."""
+    return "pytest" in sys.modules
+
+
 def setting_api_logging(loki_url: str):
     """Set up logging to Loki using QueueHandler for async logging."""
 
-    # Create Loki handler with queue
-    loki_handler = logging_loki.LokiQueueHandler(
-        Queue(-1),
-        url=loki_url,
-        tags={"service": "api"},
-        version="1",
-    )
-
     # Configure formatter to include service name and trace ID
     formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] [service=api] %(message)s")
-    loki_handler.setFormatter(formatter)
 
     # Add stream handler for console output
     stream_handler = logging.StreamHandler()
@@ -147,29 +144,36 @@ def setting_api_logging(loki_url: str):
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
-    # Add new handlers
-    root_logger.addHandler(loki_handler)
+    # Add stream handler
     root_logger.addHandler(stream_handler)
 
-    # Add test logs
-    logging.info("API logging initialized - Testing Loki connection")
-    logging.info(f"Loki URL: {loki_url}")
+    # Only add Loki handler if not in test environment
+    if not is_running_tests():
+        # Create Loki handler with queue
+        loki_handler = logging_loki.LokiQueueHandler(
+            Queue(-1),
+            url=loki_url,
+            tags={"service": "api"},
+            version="1",
+        )
+        loki_handler.setFormatter(formatter)
+        root_logger.addHandler(loki_handler)
+
+        # Add test logs
+        logging.info("API logging initialized - Testing Loki connection")
+        logging.info(f"Loki URL: {loki_url}")
+    else:
+        logging.info("Running in test environment - Loki logging disabled")
 
 
 def setting_celery_logging(loki_url: str):
     """Set up Celery-specific logging to Loki."""
     global log_queue
 
-    # Create Loki handler with queue for Celery logs
-    celery_handler = logging_loki.LokiQueueHandler(
-        Queue(-1), url=loki_url, tags={"service": "celery-worker"}, version="1"
-    )
-
     # Configure formatter to include service name
     formatter = logging.Formatter(
         "%(asctime)s %(levelname)s [%(name)s] [service=celery-worker] [%(processName)s] %(message)s"
     )
-    celery_handler.setFormatter(formatter)
 
     # Add stream handler for console output
     stream_handler = logging.StreamHandler()
@@ -186,6 +190,19 @@ def setting_celery_logging(loki_url: str):
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)
 
-        # Add new handlers
-        logger.addHandler(celery_handler)
+        # Add stream handler
         logger.addHandler(stream_handler)
+
+        # Only add Loki handler if not in test environment
+        if not is_running_tests():
+            # Create Loki handler with queue for Celery logs
+            celery_handler = logging_loki.LokiQueueHandler(
+                Queue(-1), url=loki_url, tags={"service": "celery-worker"}, version="1"
+            )
+            celery_handler.setFormatter(formatter)
+            logger.addHandler(celery_handler)
+
+    if not is_running_tests():
+        logging.info("Celery logging initialized with Loki")
+    else:
+        logging.info("Running in test environment - Celery Loki logging disabled")
