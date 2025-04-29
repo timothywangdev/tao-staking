@@ -74,7 +74,9 @@ async def sentiment_staking(
     wallet_client = wallet_client or WalletClient()
     desearch_client = desearch_client or DesearchClient()
     chutes_client = chutes_client or ChutesClient()
-    stake_amount_fn = stake_amount_fn or (lambda sentiment_score: 1)  # Default: always stake 1 TAO
+    stake_amount_fn = stake_amount_fn or (
+        lambda sentiment_score: 0.1 * sentiment_score
+    )  # Default: always stake 1 TAO
 
     # Step 1: Insert a pending result for this task in MongoDB
     pending_doc = {
@@ -91,16 +93,16 @@ async def sentiment_staking(
     try:
         # Step 2: Fetch tweets related to the netuid
         tweets = desearch_client.search_tweets(f"Bittensor netuid {netuid}", count=10)
-        logger.debug(f"Tweets: {tweets}")
+        logger.info(f"Tweets: {tweets}")
 
         # Step 3: Analyze sentiment of the tweets
         sentiment_score = chutes_client.get_sentiment_score(tweets)
         chutes_client.close()
-        logger.debug(f"Sentiment score: {sentiment_score}")
+        logger.info(f"Sentiment score: {sentiment_score}")
 
         # Step 4: Decide how much to stake or unstake based on sentiment
         stake_amount = stake_amount_fn(sentiment_score)
-        logger.debug(f"Stake amount: {stake_amount}")
+        logger.info(f"Stake amount: {stake_amount}")
         stake_unstake_success = False
         # Step 5: Stake or unstake TAO using BitTensorClient
         if stake_amount > 0:
@@ -108,13 +110,13 @@ async def sentiment_staking(
             stake_unstake_success = await bittensor_client.stake(
                 wallet_client.get_wallet(), netuid, hotkey, stake_amount
             )
-            logger.debug(f"Stake success: {stake_unstake_success}")
+            logger.info(f"Stake success: {stake_unstake_success}")
         else:
             # Negative sentiment: unstake TAO
             stake_unstake_success = await bittensor_client.unstake(
                 wallet_client.get_wallet(), netuid, hotkey, abs(stake_amount)
             )
-            logger.debug(f"Unstake success: {stake_unstake_success}")
+            logger.info(f"Unstake success: {stake_unstake_success}")
 
         # Prepare result document
         result = {
