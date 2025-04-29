@@ -27,6 +27,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.53b1",
     "opentelemetry-instrumentation-logging>=0.53b1",
     "opentelemetry-exporter-otlp>=1.32.1",
+    "locust>=2.36.2",
 ]
 
 [project.scripts]
