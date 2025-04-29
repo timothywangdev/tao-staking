@@ -4,7 +4,7 @@ from typing import Any
 from locust import HttpUser, task, between
 
 
-# hotkeys fetched from subnet 18
+# hotkeys fetched from subnet  18
 hotkeys = {
     "5DsfDHkSdtZtqxNh7i1BzT2YoZwNyvzhuhCyGS3v6gMvUnjf": 0,
     "5HHF7Z2M2xzwNSskMWB3Gzdhe1ZxcNr2nKw6dcZovWCGmjF1": 0,
